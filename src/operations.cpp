@@ -54,20 +54,20 @@ std::vector<Point2D> convertToCarterisan(const std::vector<double>& ranges, cons
 Line createLineFromPoints(const Point2D& point1, const Point2D& point2) {
     Line line;
     /*
-    - calculatiıng the coefficients of the line thats made by point1 and point2
-    - using ax +by +c, 
+    - calculating the coefficients of the line thats made by point1 and point2
+    - using ax +by +c = 0
     - a = y2 - y1
     - b = x2 - x1
     - c = -(a*x1 + b*y1) [using either x1,y1 or x2,y2]
     */
     line.a = point2.y - point1.y;
     line.b = point2.x - point1.x;
-    line.c = -(line.a * point1.x + line.b * point2.y);
+    line.c = -(line.a * point1.x + line.b * point1.y);
 
     // normalize the equation: divide by sqrt(a^2 + b^2)
     // ensuring consistent distances
     double norm = std::sqrt(line.a*line.a + line.b*line.b);
-    if (norm > 0.0001) {    // trying not to divide with zero or near-zero 
+    if (norm > almostZero) {    // trying not to divide with zero or near-zero 
         line.a /= norm;
         line.b /= norm;
         line.c /= norm;
@@ -79,26 +79,23 @@ Line createLineFromPoints(const Point2D& point1, const Point2D& point2) {
 bool computeLineIntersection (const Line& line1, const Line& line2, Point2D& result) {
     /*
     - a1*x + b1*y + c1 = 0
-    - a2*x + b1*y + c2 = 0
-    - Using Cramer's rule, we can find the intercept of two given number.
-    - [A][X] = [C]
+    - a2*x + b2*y + c2 = 0
+    - Using Cramer's rule, we can find the intercept of two given lines.
+    -              a1*x + b1*y = -c1
+    -              a2*x + b2*y = -c2
     - 
-    -   A = |a1 b1|     Ax = |c1 b1|    Ay = |a1 c1|
-    -       |a2 b2|          |c2 b2|         |a2 c2|
-    - 
-    - det(A) = a1*b2 - a2*b1, 
-    - det(Ax) = c1*b2 - b1*c2, 
-    - det(Ay) = a1*c2 - a2*c1
-    - 
+    - det(A) = a1*b2 - a2*b1
+    - x = (-c1*b2 - (-c2)*b1) / det = (-c1*b2 + c2*b1) / det
+    - y = (a1*(-c2) - a2*(-c1)) / det = (-a1*c2 + a2*c1) / det
     */
 
     double det = line1.a * line2.b - line2.a * line1.b;
 
-    //if determinant is zero or almost zero, it means that these lines are paralell to each other
+    //if determinant is zero or almost zero, it means that these lines are parallel to each other
     if (std::fabs(det) < almostZero) return false;
 
-    result.x = line1.c * line2.b - line1.b * line2.c;
-    result.y = line1.a * line2.c - line2.a * line1.c;
+    result.x = (-line1.c * line2.b + line2.c * line1.b) / det;
+    result.y = (-line1.a * line2.c + line2.a * line1.c) / det;
 
     return true;
 }
@@ -106,15 +103,15 @@ bool computeLineIntersection (const Line& line1, const Line& line2, Point2D& res
 double computeAngleBetweenLines(const Line& line1, const Line& line2) {
     /*
     - using the default ax + by + c, slope of this line is m = -a/b 
-    - (if line is perpendicular to x-axis, its' slope is infinity)
+    - (if line is perpendicular to x-axis, its slope is infinity)
     */
     double m1 = (std::fabs(line1.b) > almostZero) ? -line1.a / line1.b : std::numeric_limits<double>::infinity();
     double m2 = (std::fabs(line2.b) > almostZero) ? -line2.a / line2.b : std::numeric_limits<double>::infinity();
 
     double angle_rad;
-    //Check for the inifinity or near infinity slopes
+    //Check for the infinity or near infinity slopes
     if (std::isinf(m1) || std::isinf(m2)) {
-        //Paralell to each other
+        //Parallel to each other
         if (std::isinf(m1) && std::isinf(m2)) {
             angle_rad = 0;
         } else {
@@ -134,7 +131,7 @@ double computeAngleBetweenLines(const Line& line1, const Line& line2) {
 }
 
 //RANSAC Detect Functions
-//Checking Avaible Dots
+//Checking Available Dots
 std::vector<int> getAvailableIndices(const std::vector<bool>& used) {
     std::vector<int> indices;
     for (size_t i=0; i < used.size(); i++) {

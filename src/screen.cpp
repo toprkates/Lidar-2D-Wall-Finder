@@ -131,16 +131,11 @@ void screen(sf::RenderWindow& window, float scale, sf::Font font,
 //Draws Dots that are in range
 void drawInRangeDots(sf::RenderWindow& window, sf::Font& font, Point2D& point, int precision, sf::Color color) {
     double posX=point.x, posY=point.y;
-    std::string strX, strY;
 
     posX = convertCoordinateX(posX, gridscale);
     posY = convertCoordinateY(posY, gridscale);
 
-    strX = std::to_string(point.x).substr(0, precision);
-    strY = std::to_string(point.y).substr(0, precision);
-
     addDot(window, 3, true, posX, posY, color);
-    //addText(window, font, strX + "," + strY, 10, color, false, posX, posY, false);
 }
 
 //create the robot
@@ -152,19 +147,17 @@ void robot(sf::RenderWindow& window, sf::Font& font) {
 
 void drawLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, const Point2D& p2,
                           sf::Color color, float thickness = 2.0f) {
-    //Convert world coordinates to screen coordinates
+    //Convert coordinates
     float screenX1 = convertCoordinateX(p1.x, gridscale);
     float screenY1 = convertCoordinateY(p1.y, gridscale);
     float screenX2 = convertCoordinateX(p2.x, gridscale);
     float screenY2 = convertCoordinateY(p2.y, gridscale);
     
-    //Calculate line length and angle
     float dx = screenX2 - screenX1;
     float dy = screenY2 - screenY1;
     float length = std::sqrt(dx * dx + dy * dy);
     float angle = std::atan2(dy, dx) * 180.0f / M_PI;
     
-    //Draw the line using addLine function
     addLine(window, length, thickness, screenX1, screenY1, color, angle, false);
 }
 
@@ -203,17 +196,29 @@ void drawDashedLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, co
 
 void drawDetectedLine(sf::RenderWindow& window, const std::vector<Point2D>& points, 
                      const Line& line, sf::Color color) {
-    // Need at least 2 points to draw a line
     if (line.pointIndices.size() < 2) return;
     
-    // Find the two endpoints (first and last point in the line)
     Point2D firstPoint = points[line.pointIndices.front()];
     Point2D lastPoint = points[line.pointIndices.back()];
     
-    // Draw line connecting the endpoints
+    // Calculate line direction
+    float dx = lastPoint.x - firstPoint.x;
+    float dy = lastPoint.y - firstPoint.y;
+    float length = std::sqrt(dx*dx + dy*dy);
+    
+    // Extend the line by 50% on each end
+    float extend = 0.8f;
+    Point2D extendedStart, extendedEnd;
+    extendedStart.x = firstPoint.x - (dx/length) * length * extend;
+    extendedStart.y = firstPoint.y - (dy/length) * length * extend;
+    extendedEnd.x = lastPoint.x + (dx/length) * length * extend;
+    extendedEnd.y = lastPoint.y + (dy/length) * length * extend;
+    
+    // Draw the extended line with dashed style to show it's extrapolated
+    drawDashedLineBetweenPoints(window, extendedStart, firstPoint, sf::Color(128, 128, 128), 2.0f);
     drawLineBetweenPoints(window, firstPoint, lastPoint, color, 3.0f);
+    drawDashedLineBetweenPoints(window, lastPoint, extendedEnd, sf::Color(128, 128, 128), 2.0f);
 }
-
 
 void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font, 
                            const Intersection& intersection, bool showLabel = true) {
@@ -221,18 +226,15 @@ void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font,
     float screenX = convertCoordinateX(intersection.point.x, gridscale);
     float screenY = convertCoordinateY(intersection.point.y, gridscale);
     
-    // Draw bullseye effect (red circle with white center)
-    addDot(window, 12, true, screenX, screenY, sf::Color::Red);      // Outer red circle
-    addDot(window, 8, true, screenX, screenY, sf::Color::White);     // Middle white circle
-    addDot(window, 4, true, screenX, screenY, sf::Color::Red);       // Inner red circle
+    addDot(window, 4, true, screenX, screenY, sf::Color::Red);     
+    addDot(window, 3, true, screenX, screenY, sf::Color::White);    
+    addDot(window, 2, true, screenX, screenY, sf::Color::Red);      
     
-    // Optionally draw label with angle and distance info
     if (showLabel) {
-        std::string angleStr = std::to_string((int)intersection.angle_degrees) + "°";
+        std::string angleStr = std::to_string((int)intersection.angle_degrees) + "degree";
         std::string distStr = std::to_string((int)(intersection.distance_to_robot * 100)) + "cm";
         std::string label = angleStr + " " + distStr;
         
-        // Draw label slightly offset from the marker
         addText(window, font, label, 10, sf::Color::Red, false, 
                screenX + 15, screenY - 5, false);
     }
@@ -249,20 +251,30 @@ void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, int numI
     addText(window, font, "Legend:", 12, sf::Color::Black, false, legendX, currentY, false);
     currentY += lineHeight + 5;
     
-    // Raw points
-    addDot(window, 3, true, legendX + 5, currentY + 5, sf::Color(200, 200, 200));
+    //Raw points
+    addDot(window, 3, true, legendX + 5, currentY + 5, darkGray);
     addText(window, font, "Raw LIDAR Points", 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
     currentY += lineHeight;
     
-    // Detected lines
-    addDot(window, 5, true, legendX + 5, currentY + 5, sf::Color::Green);
+    //Detected Points
+    addDot(window, 3, true, legendX + 5, currentY + 5, sf::Color::Green);
+    addText(window, font, "In Line LIDAR Points", 10, sf::Color::Black, false, 
+           legendX + 15, currentY, false);
+    currentY += lineHeight;
+    
+    //Detected lines
+    addDot(window, 5, true, legendX + 5, currentY + 5, sf::Color::Black);
     std::string linesText = "Detected Lines (" + std::to_string(numLines) + ")";
     addText(window, font, linesText, 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
     currentY += lineHeight;
     
     // Intersections
+    addDot(window, 8, true, legendX + 5, currentY + 5, sf::Color::Red);     
+    addDot(window, 4, true, legendX + 5, currentY + 5, sf::Color::White);    
+    addDot(window, 2, true, legendX + 5, currentY + 5, sf::Color::Red);      
+    
     addDot(window, 8, true, legendX + 5, currentY + 5, sf::Color::Red);
     std::string intersText = "Intersections (" + std::to_string(numIntersections) + ")";
     addText(window, font, intersText, 10, sf::Color::Black, false, 

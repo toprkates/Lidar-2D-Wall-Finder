@@ -1,169 +1,175 @@
-#include <iostream> 
-#include <fstream> 
-#include <string> 
+#include <iostream>
+#include <string>
 #include <vector>
-#include <sstream>
 #include <cmath>
-#include <iomanip>
-#include <algorithm>
 #include <random>
-#include <limits>
 
-struct Point2D
-{
-    double x; 
-    double y;
-};
+#include "file_read.h"
+#include "operations.h"
+#include "constants.h"
 
-struct LidarScanParams
-{
-    double angle_min = 0.0;
-    double angle_max = 0.0;
-    double angle_increment = 0.0;
-    double range_min = 0.0;
-    double range_max = 0.0;
-};
+// Simple distance calculations
+double distanceToOrigin(const Point2D& p) {
+    return std::sqrt(p.x * p.x + p.y * p.y);
+}
 
-// Doğru denklemi: ax + by + c = 0 formatında
-struct Line
-{
-    double a, b, c;
-    std::vector<int> pointIndices; // Bu doğruyu oluşturan nokta indeksleri
+double distancePointToLine(const Point2D& p, const Line& line) {
+    return std::fabs(line.a * p.x + line.b * p.y + line.c) / 
+           std::sqrt(line.a * line.a + line.b * line.b);
+}
+
+// Convert polar to Cartesian coordinates
+std::vector<Point2D> convertToCarterisan(const std::vector<double>& ranges, const Scan& params) {
+    std::vector<Point2D> points;
     
-    // İki nokta arasındaki doğru denklemini hesapla
-    void computeFromPoints(const Point2D& p1, const Point2D& p2)
-    {
-        a = p2.y - p1.y;
-        b = p1.x - p2.x;
-        c = -(a * p1.x + b * p1.y);
+    for (size_t i = 0; i < ranges.size(); i++) {
+        double range = ranges[i];
         
-        // Normalizasyon
-        double norm = sqrt(a*a + b*b);
-        if (norm > 1e-10) {
-            a /= norm;
-            b /= norm;
-            c /= norm;
+        // Filter invalid ranges
+        if (range < params.range_min || range > params.range_max) continue;
+        
+        double angle = params.angle_min + i * params.angle_increment;
+        
+        Point2D point;
+        point.x = range * std::cos(angle);
+        point.y = range * std::sin(angle);
+        points.push_back(point);
+    }
+    return points;
+}
+
+// Create line equation from two points
+Line createLineFromPoints(const Point2D& p1, const Point2D& p2) {
+    Line line;
+    
+    // Line equation: ax + by + c = 0
+    line.a = p2.y - p1.y;
+    line.b = p1.x - p2.x;  // Note: p1.x - p2.x (not p2.x - p1.x)
+    line.c = -(line.a * p1.x + line.b * p1.y);  // FIXED: was using p2.y
+    
+    // Normalize for consistent distance calculations
+    double norm = std::sqrt(line.a * line.a + line.b * line.b);
+    if (norm > almostZero) {
+        line.a /= norm;
+        line.b /= norm;
+        line.c /= norm;
+    }
+    
+    return line;
+}
+
+// Find intersection of two lines using Cramer's rule
+bool computeLineIntersection(const Line& line1, const Line& line2, Point2D& result) {
+    double det = line1.a * line2.b - line2.a * line1.b;
+    
+    // Check if lines are parallel
+    if (std::fabs(det) < almostZero) return false;
+    
+    // FIXED: Signs were wrong!
+    result.x = -(line1.c * line2.b - line1.b * line2.c) / det;
+    result.y = -(line1.a * line2.c - line2.a * line1.c) / det;
+    
+    return true;
+}
+
+// Calculate angle between two lines (0-90 degrees)
+double computeAngleBetweenLines(const Line& line1, const Line& line2) {
+    double m1 = (std::fabs(line1.b) > almostZero) ? -line1.a / line1.b : std::numeric_limits<double>::infinity();
+    double m2 = (std::fabs(line2.b) > almostZero) ? -line2.a / line2.b : std::numeric_limits<double>::infinity();
+    
+    double angle_rad;
+    
+    if (std::isinf(m1) || std::isinf(m2)) {
+        angle_rad = (std::isinf(m1) && std::isinf(m2)) ? 0 : 
+                    std::atan(std::fabs(std::isinf(m1) ? m2 : m1));
+    } else {
+        angle_rad = std::atan(std::fabs((m1 - m2) / (1 + m1 * m2)));
+    }
+    
+    double angle_deg = angle_rad * 180.0 / M_PI;
+    return (angle_deg > 90) ? 180 - angle_deg : angle_deg;
+}
+
+// RANSAC helper functions
+std::vector<int> getAvailableIndices(const std::vector<bool>& used) {
+    std::vector<int> indices;
+    for (size_t i = 0; i < used.size(); i++) {
+        if (!used[i]) indices.push_back(i);
+    }
+    return indices;
+}
+
+std::vector<int> findInliers(const std::vector<Point2D>& points,
+                             const std::vector<int>& availableIndices,
+                             const Line& line,
+                             double threshold) {
+    std::vector<int> inliers;
+    for (int idx : availableIndices) {
+        if (distancePointToLine(points[idx], line) < threshold) {
+            inliers.push_back(idx);
+        }
+    }
+    return inliers;
+}
+
+// Find best line using RANSAC algorithm
+Line findBestLineRANSAC(const std::vector<Point2D>& points,
+                        const std::vector<int>& availableIndices,
+                        std::vector<int>& bestInliers,
+                        const RANSACparameters& config,
+                        std::mt19937& gen) {
+    Line bestLine;
+    bestInliers.clear();
+    
+    std::uniform_int_distribution<> dis(0, availableIndices.size() - 1);
+    
+    for (int iter = 0; iter < config.maxIterations; ++iter) {
+        // Pick two random points
+        int idx1 = availableIndices[dis(gen)];
+        int idx2 = availableIndices[dis(gen)];
+        if (idx1 == idx2) continue;
+        
+        // Create line and find inliers
+        Line candidateLine = createLineFromPoints(points[idx1], points[idx2]);
+        std::vector<int> inliers = findInliers(points, availableIndices, 
+                                               candidateLine, config.distanceThreshold);
+        
+        // Keep if best so far
+        if (inliers.size() > bestInliers.size()) {
+            bestInliers = inliers;
+            bestLine = candidateLine;
         }
     }
     
-    // Noktanın doğruya uzaklığını hesapla
-    double distanceToPoint(const Point2D& p) const
-    {
-        return fabs(a * p.x + b * p.y + c) / sqrt(a*a + b*b);
-    }
-};
-
-struct Intersection
-{
-    Point2D point;
-    int line1_idx;
-    int line2_idx;
-    double angle_degrees;
-    double distance_to_robot;
-};
-
-void trim(std::string& s) {
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
-    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }).base(), s.end());
+    return bestLine;
 }
 
-bool parseKeyValue(const std::string& line, const std::string& key, double& value)
-{
-    std::stringstream ss(line);  
-    std::string crrKey;
-    char sep;
-    
-    ss >> crrKey;
-    if (crrKey == key) 
-    {
-        ss >> sep;
-        if (sep == '=')
-        {
-            ss >> value;
-            return true;
-        }
-    }
-    return false; 
-}
-
-// RANSAC algoritması ile doğru tespiti
-std::vector<Line> detectLinesRANSAC(const std::vector<Point2D>& points, 
-                                     int minPoints = 8,
-                                     double distanceThreshold = 0.05,
-                                     int maxIterations = 1000)
-{
+// Detect all lines in point cloud
+std::vector<Line> detectLines(const std::vector<Point2D>& points,
+                              const RANSACparameters& config) {
     std::vector<Line> detectedLines;
     std::vector<bool> used(points.size(), false);
+    
     std::random_device rd;
     std::mt19937 gen(rd());
     
-    while (true)
-    {
-        // Kullanılmamış noktaları bul
-        std::vector<int> availableIndices;
-        for (size_t i = 0; i < points.size(); ++i) {
-            if (!used[i]) {
-                availableIndices.push_back(i);
-            }
-        }
+    while (true) {
+        std::vector<int> availableIndices = getAvailableIndices(used);
         
-        if (availableIndices.size() < minPoints) {
-            break;
-        }
+        if (availableIndices.size() < config.minPoints) break;
         
-        Line bestLine;
         std::vector<int> bestInliers;
-        int maxInliers = 0;
+        Line bestLine = findBestLineRANSAC(points, availableIndices,
+                                          bestInliers, config, gen);
         
-        // RANSAC iterasyonları
-        for (int iter = 0; iter < maxIterations; ++iter)
-        {
-            // Rastgele 2 nokta seç
-            std::uniform_int_distribution<> dis(0, availableIndices.size() - 1);
-            int idx1 = availableIndices[dis(gen)];
-            int idx2 = availableIndices[dis(gen)];
-            
-            if (idx1 == idx2) continue;
-            
-            // Bu iki noktadan doğru oluştur
-            Line candidateLine;
-            candidateLine.computeFromPoints(points[idx1], points[idx2]);
-            
-            // Inlier noktaları bul
-            std::vector<int> inliers;
-            for (int idx : availableIndices)
-            {
-                if (candidateLine.distanceToPoint(points[idx]) < distanceThreshold) {
-                    inliers.push_back(idx);
-                }
-            }
-            
-            // En iyi modeli güncelle
-            if (inliers.size() > maxInliers)
-            {
-                maxInliers = inliers.size();
-                bestInliers = inliers;
-                bestLine = candidateLine;
-            }
-        }
-        
-        // Yeterli inlier varsa doğruyu kaydet
-        if (maxInliers >= minPoints)
-        {
+        if (bestInliers.size() >= config.minPoints) {
             bestLine.pointIndices = bestInliers;
             detectedLines.push_back(bestLine);
             
-            // Kullanılan noktaları işaretle
             for (int idx : bestInliers) {
                 used[idx] = true;
             }
-        }
-        else
-        {
+        } else {
             break;
         }
     }
@@ -171,265 +177,32 @@ std::vector<Line> detectLinesRANSAC(const std::vector<Point2D>& points,
     return detectedLines;
 }
 
-// İki doğrunun kesişim noktasını hesapla
-bool computeIntersection(const Line& line1, const Line& line2, Point2D& intersection)
-{
-    // a1*x + b1*y + c1 = 0
-    // a2*x + b2*y + c2 = 0
-    
-    double det = line1.a * line2.b - line2.a * line1.b;
-    
-    // Paralel doğrular
-    if (fabs(det) < 1e-10) {
-        return false;
-    }
-    
-    intersection.x = (line1.b * line2.c - line2.b * line1.c) / det;
-    intersection.y = (line2.a * line1.c - line1.a * line2.c) / det;
-    
-    return true;
-}
-
-// İki doğru arasındaki açıyı hesapla (derece cinsinden)
-double computeAngleBetweenLines(const Line& line1, const Line& line2)
-{
-    // Doğruların eğimlerini hesapla
-    // ax + by + c = 0 -> y = -(a/b)x - c/b
-    // Eğim m = -a/b
-    
-    double m1 = (fabs(line1.b) > 1e-10) ? -line1.a / line1.b : std::numeric_limits<double>::infinity();
-    double m2 = (fabs(line2.b) > 1e-10) ? -line2.a / line2.b : std::numeric_limits<double>::infinity();
-    
-    double angle_rad;
-    
-    if (std::isinf(m1) || std::isinf(m2)) {
-        // Dikey doğru durumu
-        if (std::isinf(m1) && std::isinf(m2)) {
-            angle_rad = 0; // Her ikisi de dikey
-        } else if (std::isinf(m1)) {
-            angle_rad = atan(fabs(m2));
-        } else {
-            angle_rad = atan(fabs(m1));
-        }
-    } else {
-        angle_rad = atan(fabs((m1 - m2) / (1 + m1 * m2)));
-    }
-    
-    double angle_deg = angle_rad * 180.0 / 3.141592653589793;
-    
-    // Açıyı 0-90 derece arasına normalize et
-    if (angle_deg > 90) {
-        angle_deg = 180 - angle_deg;
-    }
-    
-    return angle_deg;
-}
-
-// Nokta ile robot arasındaki mesafeyi hesapla (robot 0,0'da)
-double distanceToRobot(const Point2D& point)
-{
-    return sqrt(point.x * point.x + point.y * point.y);
-}
-
-// Ana program
-int main(int argc, char* argv[])
-{
-    if (argc < 2) {
-        std::cerr << "Hata: TOML dosya adi belirtilmedi. " << "Kullanim: " << argv[0] << " <dosya_adi.toml>" << std::endl;
-        return 1;
-    }
-
-    std::string filename = argv[1];
-    std::ifstream file(filename);
-
-    if (!file.is_open())
-    {
-        std::cerr << "Hata: " << filename << " Dosyasi acilamadi." << std::endl;
-        return 1;
-    }
-    
-    LidarScanParams params;
-    std::vector<double> ranges;
-    std::string line;
-    bool inScanSection = false;  
-    bool readingRanges = false;
-
-    while (std::getline(file, line)) 
-    {
-        size_t brckt;
-        double rangeVal;
-        trim(line);
-        if (line.empty()) {
-            continue;
-        }
-
-        if (line == "[scan]") { 
-            inScanSection = true; 
-            continue; 
-        } else if (line[0] == '[') { 
-            inScanSection = false; 
-            continue; 
-        }
-
-        if (readingRanges) {
-            if (line.find(']') != std::string::npos) {
-                readingRanges = false; 
-                line = line.substr(0, line.find(']'));
-            }
-
-            std::replace(line.begin(), line.end(), ',', ' ');
-            std::stringstream ss(line);
-            double rangevalue;
-            while (ss >> rangevalue) {
-                ranges.push_back(rangevalue);
-            }
-        } 
-        else if (inScanSection)
-        {
-            if (!parseKeyValue(line, "angle_min", params.angle_min) &&
-                !parseKeyValue(line, "angle_max", params.angle_max) &&
-                !parseKeyValue(line, "angle_increment", params.angle_increment) &&
-                !parseKeyValue(line, "range_min", params.range_min) &&
-                !parseKeyValue(line, "range_max", params.range_max)) {
-                
-                if (line.rfind("ranges", 0) == 0) {
-                    readingRanges = true;
-                    brckt = line.find('[');
-                    if (brckt != std::string::npos) {
-                        line = line.substr(brckt + 1);
-                        std::replace(line.begin(), line.end(), ',', ' ');
-                        std::stringstream ss(line);
-                        while (ss >> rangeVal) {
-                            ranges.push_back(rangeVal);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    file.close();
-    
-    // Filtreleme ve Kartezyen koordinatlara dönüştürme
-    std::vector<Point2D> points;
-    for (size_t i = 0; i < ranges.size(); ++i)
-    {
-        double curRange = ranges[i];
-
-        if (curRange < params.range_min || curRange > params.range_max) {
-            continue;
-        }
-
-        double curAngle = params.angle_min + i * params.angle_increment;
-        Point2D point;
-        point.x = curRange * std::cos(curAngle);
-        point.y = curRange * std::sin(curAngle);
-        points.push_back(point);
-    }
-    
-    std::cout << "=== ADIM 1: Veri Okuma ve Filtreleme ===" << std::endl;
-    std::cout << "Filtrelenmis ve Donusturulmus Gecerli Noktalar: " << points.size() << " adet" << std::endl;
-    
-    // ADIM 2: Doğru Tespiti (RANSAC)
-    std::cout << "\n=== ADIM 2: Dogru Tespiti (RANSAC) ===" << std::endl;
-    std::vector<Line> detectedLines = detectLinesRANSAC(points, 8, 0.05, 1000);
-    std::cout << "Tespit edilen dogru sayisi: " << detectedLines.size() << std::endl;
-    
-    for (size_t i = 0; i < detectedLines.size(); ++i) {
-        std::cout << "Dogru " << (i+1) << ": " << detectedLines[i].pointIndices.size() 
-                  << " nokta (" << std::fixed << std::setprecision(4)
-                  << detectedLines[i].a << "x + " 
-                  << detectedLines[i].b << "y + " 
-                  << detectedLines[i].c << " = 0)" << std::endl;
-    }
-    
-    // ADIM 3-4-5: Kesişim Analizi, Açı Kontrolü ve Mesafe Hesabı
-    std::cout << "\n=== ADIM 3-4-5: Kesisim Analizi ve Aci Kontrolu ===" << std::endl;
+// Find valid intersections between detected lines
+std::vector<Intersection> findValidIntersections(const std::vector<Line>& lines,
+                                                 double minAngleThreshold) {
     std::vector<Intersection> validIntersections;
-    double minAngleThreshold = 60.0; // 60 derece ve üstü
     
-    for (size_t i = 0; i < detectedLines.size(); ++i)
-    {
-        for (size_t j = i + 1; j < detectedLines.size(); ++j)
-        {
-            Point2D intersectionPoint;
-            if (computeIntersection(detectedLines[i], detectedLines[j], intersectionPoint))
-            {
-                double angle = computeAngleBetweenLines(detectedLines[i], detectedLines[j]);
-                double dist = distanceToRobot(intersectionPoint);
+    // Check all line pairs
+    for (size_t i = 0; i < lines.size(); ++i) {
+        for (size_t j = i + 1; j < lines.size(); ++j) {
+            Point2D point;
+            
+            if (!computeLineIntersection(lines[i], lines[j], point)) continue;
+            
+            double angle = computeAngleBetweenLines(lines[i], lines[j]);
+            
+            if (angle >= minAngleThreshold) {
+                Intersection inter;
+                inter.point = point;
+                inter.line1_idx = i;
+                inter.line2_idx = j;
+                inter.angle_degrees = angle;
+                inter.distance_to_robot = distanceToOrigin(point);
                 
-                std::cout << "\nDogru " << (i+1) << " ve Dogru " << (j+1) << " kesisiyor:" << std::endl;
-                std::cout << "  Kesisim Noktasi: (" << std::fixed << std::setprecision(4) 
-                          << intersectionPoint.x << ", " << intersectionPoint.y << ")" << std::endl;
-                std::cout << "  Aci: " << angle << " derece" << std::endl;
-                std::cout << "  Robot'a Mesafe: " << dist << " m" << std::endl;
-                
-                // Açı kontrolü
-                if (angle >= minAngleThreshold)
-                {
-                    Intersection inter;
-                    inter.point = intersectionPoint;
-                    inter.line1_idx = i;
-                    inter.line2_idx = j;
-                    inter.angle_degrees = angle;
-                    inter.distance_to_robot = dist;
-                    validIntersections.push_back(inter);
-                    
-                    std::cout << "  >>> GECERLI (>= 60 derece)" << std::endl;
-                }
+                validIntersections.push_back(inter);
             }
         }
     }
     
-    std::cout << "\n=== OZET ===" << std::endl;
-    std::cout << "Toplam Nokta: " << points.size() << std::endl;
-    std::cout << "Tespit Edilen Dogru: " << detectedLines.size() << std::endl;
-    std::cout << "Gecerli Kesisim (>= 60 derece): " << validIntersections.size() << std::endl;
-    
-    // ============================================================
-    // GRAFİK İÇİN VERİLER - BURADAN AŞAĞISINI GRAFİK KODUNUZA EKLEYIN
-    // ============================================================
-    
-    std::cout << "\n=== GRAFIK ICIN HAZIR VERI YAPILARI ===" << std::endl;
-    std::cout << "Grafik kodunuza asagidaki verileri baglayin:\n" << std::endl;
-    
-    std::cout << "// 1. TUM NOKTALAR (gri veya acik renk noktalar olarak cizin)" << std::endl;
-    std::cout << "// std::vector<Point2D> points; --> " << points.size() << " nokta" << std::endl;
-    std::cout << "// Her nokta: points[i].x, points[i].y\n" << std::endl;
-    
-    std::cout << "// 2. TESPIT EDILEN DOGRULAR (farkli renklerle cizin)" << std::endl;
-    std::cout << "// std::vector<Line> detectedLines; --> " << detectedLines.size() << " dogru" << std::endl;
-    std::cout << "// Her dogru icin:" << std::endl;
-    std::cout << "//   - detectedLines[i].pointIndices -> bu dogruyu olusturan noktalarin indeksleri" << std::endl;
-    std::cout << "//   - Bu indekslerdeki points[] noktalarini birlestirerek dogru cizin" << std::endl;
-    std::cout << "//   - Her dogruyu farkli renkle boyayin (ornek: yesil tonlari)" << std::endl;
-    std::cout << "//   - Her dogruya etiket ekleyin: 'd1', 'd2', vb.\n" << std::endl;
-    
-    std::cout << "// 3. GECERLI KESISIM NOKTALARI (buyuk isaretleyicilerle cizin)" << std::endl;
-    std::cout << "// std::vector<Intersection> validIntersections; --> " << validIntersections.size() << " kesisim" << std::endl;
-    std::cout << "// Her kesisim icin:" << std::endl;
-    std::cout << "//   - validIntersections[i].point.x, .y -> kesisim koordinatlari" << std::endl;
-    std::cout << "//   - validIntersections[i].angle_degrees -> aci bilgisi" << std::endl;
-    std::cout << "//   - validIntersections[i].distance_to_robot -> mesafe bilgisi" << std::endl;
-    std::cout << "//   - Kesisim noktasini buyuk daire veya yildiz ile isaretleyin" << std::endl;
-    std::cout << "//   - Yanina aci ve mesafe bilgisi yazin\n" << std::endl;
-    
-    std::cout << "// 4. ROBOT KONUMU (kirmizi buyuk nokta)" << std::endl;
-    std::cout << "// Point2D robot = {0.0, 0.0}; // Robot her zaman orijinde" << std::endl;
-    std::cout << "// Robot'u kirmizi buyuk daire ile isaretleyin\n" << std::endl;
-    
-    std::cout << "// 5. ROBOT'TAN KESISIMLERE CIZGILER (kesikli kirmizi cizgiler)" << std::endl;
-    std::cout << "// Her gecerli kesisim icin robot (0,0)'dan kesisim noktasina kesikli cizgi cizin" << std::endl;
-    std::cout << "// Cizgi uzerine mesafe degerini yazin\n" << std::endl;
-    
-    std::cout << "// 6. LEJANT (sag ust kose)" << std::endl;
-    std::cout << "// - Tum Noktalar (gri)" << std::endl;
-    std::cout << "// - Robot (kirmizi)" << std::endl;
-    std::cout << "// - d1 noktasi (X nokta) - d1 ile gosterilen dogru" << std::endl;
-    std::cout << "// - d2 noktasi (X nokta) - d2 ile gosterilen dogru" << std::endl;
-    std::cout << "// - ... (her dogru icin)" << std::endl;
-    std::cout << "// - 60+ derece Kesisim (buyuk daire/yildiz)" << std::endl;
-    std::cout << "// - Mesafe Cizgisi (kesikli kirmizi)" << std::endl;
-    
-    return 0;
+    return validIntersections;
 }
