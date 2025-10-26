@@ -215,9 +215,9 @@ void drawDetectedLine(sf::RenderWindow& window, const std::vector<Point2D>& poin
     extendedEnd.y = lastPoint.y + (dy/length) * length * extend;
     
     // Draw the extended line with dashed style to show it's extrapolated
-    drawDashedLineBetweenPoints(window, extendedStart, firstPoint, sf::Color(128, 128, 128), 2.0f);
+    //drawDashedLineBetweenPoints(window, extendedStart, firstPoint, sf::Color(128, 128, 128), 2.0f);
     drawLineBetweenPoints(window, firstPoint, lastPoint, color, 3.0f);
-    drawDashedLineBetweenPoints(window, lastPoint, extendedEnd, sf::Color(128, 128, 128), 2.0f);
+    //drawDashedLineBetweenPoints(window, lastPoint, extendedEnd, sf::Color(128, 128, 128), 2.0f);
 }
 
 void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font, 
@@ -271,11 +271,10 @@ void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, int numI
     currentY += lineHeight;
     
     // Intersections
-    addDot(window, 8, true, legendX + 5, currentY + 5, sf::Color::Red);     
+    addDot(window, 6, true, legendX + 5, currentY + 5, sf::Color::Red);     
     addDot(window, 4, true, legendX + 5, currentY + 5, sf::Color::White);    
     addDot(window, 2, true, legendX + 5, currentY + 5, sf::Color::Red);      
     
-    addDot(window, 8, true, legendX + 5, currentY + 5, sf::Color::Red);
     std::string intersText = "Intersections (" + std::to_string(numIntersections) + ")";
     addText(window, font, intersText, 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
