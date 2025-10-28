@@ -13,12 +13,15 @@
                 "src/operations.cpp",
                 "-Iinclude",
                 "-I\"C:/C++ Libraries/SFML-3.0.2-windows-gcc-14.2.0-mingw-64-bit/SFML-3.0.2/include\"",
+                "-IC:/msys64/ucrt64/include",
                 "-o",
                 "${workspaceFolder}/bin/main.exe",
                 "-L\"C:/C++ Libraries/SFML-3.0.2-windows-gcc-14.2.0-mingw-64-bit/SFML-3.0.2/lib\"",
+                "-LC:/msys64/ucrt64/lib",
                 "-lsfml-graphics",
                 "-lsfml-window",
-                "-lsfml-system"
+                "-lsfml-system",
+                "-lcurl"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
