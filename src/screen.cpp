@@ -7,6 +7,11 @@
 
 #include "constants.h"
 
+//finds the distance between two points
+double distancePointsToPoints(const Point2D& p, const Point2D& q) {
+    return std::sqrt((p.x - q.x)*(p.x - q.x) + (p.y - q.y)*(p.y - q.y));
+}
+
 //create dots
 int addDot (sf::RenderWindow& window, float size, bool dotAlign, float posX, 
             float posY, sf::Color color) {
@@ -94,14 +99,6 @@ void mainFrame(sf::RenderWindow& window, sf::Font& font, float sizeX, float size
 void screen(sf::RenderWindow& window, float scale, sf::Font font, 
             float startX, float startY, float endX, float endY) {
     std::string numStr;
-    
-    //showcasing the corners actual coordinates
-    /* 
-    addText(window, font, std::to_string((int) startX) + "." + std::to_string((int) startY), 10, sf::Color::Black, false, startX, startY, 0);
-    addText(window, font, std::to_string((int) endX) + "." + std::to_string((int) startY), 10, sf::Color::Black, false, endX, startY, 0);
-    addText(window, font, std::to_string((int) startX) + "." + std::to_string((int) endY), 10, sf::Color::Black, false, startX, endY, 0);
-    addText(window, font, std::to_string((int) endX) + "." + std::to_string((int) endY), 10, sf::Color::Black, false, endX, endY, 0);
-    */
 
     //putting dots seperately
     for (float i=startX; i<=endX; i+=5.f*scale) {
@@ -144,7 +141,7 @@ void robot(sf::RenderWindow& window, sf::Font& font) {
     addText(window, font, "Robot", 10, sf::Color::Red, true, frame_X/2+margin_X, frame_Y/2+margin_Y+10.f, false);
 }
 
-
+//draw a line between two points
 void drawLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, const Point2D& p2,
                           sf::Color color, float thickness = 2.0f) {
     //Convert coordinates
@@ -161,25 +158,26 @@ void drawLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, const Po
     addLine(window, length, thickness, screenX1, screenY1, color, angle, false);
 }
 
+//draw a dashed line between two points
 void drawDashedLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, const Point2D& p2,
                                  sf::Color color, float thickness = 2.0f, float dashLength = 10.0f) {
-    // Convert to screen coordinates
+    //converting to screen coordinates
     float screenX1 = convertCoordinateX(p1.x, gridscale);
     float screenY1 = convertCoordinateY(p1.y, gridscale);
     float screenX2 = convertCoordinateX(p2.x, gridscale);
     float screenY2 = convertCoordinateY(p2.y, gridscale);
     
-    // Calculate distance and direction
+    //calculate distance and direction
     float dx = screenX2 - screenX1;
     float dy = screenY2 - screenY1;
     float totalLength = std::sqrt(dx * dx + dy * dy);
     float angle = std::atan2(dy, dx) * 180.0f / M_PI;
     
-    // Normalize direction
+    //normalize direction
     float ndx = dx / totalLength;
     float ndy = dy / totalLength;
     
-    // Draw dashes
+    //draw dashes
     bool drawDash = true;
     for (float d = 0; d < totalLength; d += dashLength) {
         if (drawDash) {
@@ -193,7 +191,7 @@ void drawDashedLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, co
     }
 }
 
-
+//draw a line
 void drawDetectedLine(sf::RenderWindow& window, const std::vector<Point2D>& points, 
                      const Line& line, sf::Color color) {
     if (line.pointIndices.size() < 2) return;
@@ -201,28 +199,18 @@ void drawDetectedLine(sf::RenderWindow& window, const std::vector<Point2D>& poin
     Point2D firstPoint = points[line.pointIndices.front()];
     Point2D lastPoint = points[line.pointIndices.back()];
     
-    // Calculate line direction
+    //calculate line direction
     float dx = lastPoint.x - firstPoint.x;
     float dy = lastPoint.y - firstPoint.y;
     float length = std::sqrt(dx*dx + dy*dy);
     
-    // Extend the line by 50% on each end
-    float extend = 0.8f;
-    Point2D extendedStart, extendedEnd;
-    extendedStart.x = firstPoint.x - (dx/length) * length * extend;
-    extendedStart.y = firstPoint.y - (dy/length) * length * extend;
-    extendedEnd.x = lastPoint.x + (dx/length) * length * extend;
-    extendedEnd.y = lastPoint.y + (dy/length) * length * extend;
-    
-    // Draw the extended line with dashed style to show it's extrapolated
-    //drawDashedLineBetweenPoints(window, extendedStart, firstPoint, sf::Color(128, 128, 128), 2.0f);
     drawLineBetweenPoints(window, firstPoint, lastPoint, color, 3.0f);
-    //drawDashedLineBetweenPoints(window, lastPoint, extendedEnd, sf::Color(128, 128, 128), 2.0f);
 }
 
+//mark intersections
 void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font, 
                            const Intersection& intersection, bool showLabel = true) {
-    // Convert to screen coordinates
+    //convert to screen coordinates
     float screenX = convertCoordinateX(intersection.point.x, gridscale);
     float screenY = convertCoordinateY(intersection.point.y, gridscale);
     
@@ -241,48 +229,74 @@ void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font,
 }
 
 //side bar for showing
-void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, int numIntersections) {
-    float legendX = margin_X + 10;
+void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, 
+                int numIntersections, std::vector<Line>& detectedLines,
+                std::vector<Point2D>& allDots,
+                std::vector<Intersection>& validIntersections) {
+    float legendX = frame_X+ margin_X + 15;
     float legendY = margin_Y + 10;
     float lineHeight = 18;
     float currentY = legendY;
     
-    // Title
+    //title
     addText(window, font, "Legend:", 12, sf::Color::Black, false, legendX, currentY, false);
     currentY += lineHeight + 5;
     
-    //Raw points
+    //raw points
     addDot(window, 3, true, legendX + 5, currentY + 5, darkGray);
     addText(window, font, "Raw LIDAR Points", 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
     currentY += lineHeight;
     
-    //Detected Points
+    //detected points
     addDot(window, 3, true, legendX + 5, currentY + 5, sf::Color::Green);
     addText(window, font, "In Line LIDAR Points", 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
     currentY += lineHeight;
     
-    //Detected lines
-    addDot(window, 5, true, legendX + 5, currentY + 5, sf::Color::Black);
+    //detected lines
+    addDot(window, 5, true, legendX + 5, currentY + 5, darkGreen);
     std::string linesText = "Detected Lines (" + std::to_string(numLines) + ")";
     addText(window, font, linesText, 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
     currentY += lineHeight;
+
+    //write down the lines seperately
+    for (int i=0; i<detectedLines.size(); i++) {
+        addDot(window, 3, true, legendX + 10, currentY + 5, darkGreen);
+        std::string linesText = 
+            "L-" + std::to_string(i+1) + ": " + "(" + 
+            std::to_string(distancePointsToPoints(allDots[detectedLines[i].pointIndices.front()], allDots[detectedLines[i].pointIndices.back()])).substr(0, 4) + "m) " +
+            std::to_string(detectedLines[i].pointIndices.size()) + " points ";
+        addText(window, font, linesText, 10, sf::Color::Black, false, 
+           legendX + 20, currentY, false);
+        currentY += lineHeight;
+    }
     
-    // Intersections
+    //intersections
     addDot(window, 6, true, legendX + 5, currentY + 5, sf::Color::Red);     
     addDot(window, 4, true, legendX + 5, currentY + 5, sf::Color::White);    
     addDot(window, 2, true, legendX + 5, currentY + 5, sf::Color::Red);      
     
     std::string intersText = "Intersections (" + std::to_string(numIntersections) + ")";
-    addText(window, font, intersText, 10, sf::Color::Black, false, 
-           legendX + 15, currentY, false);
+    addText(window, font, intersText, 10, sf::Color::Black, false, legendX + 15, currentY, false);
     currentY += lineHeight;
+
+    for (int i=0; i<validIntersections.size(); i++) {
+        std::string eachintersText = 
+            "L-" + std::to_string(validIntersections[i].line1_idx+1) +
+            " and " + "L-" + std::to_string(validIntersections[i].line2_idx+1) + 
+            " Intercepts at (" + std::to_string((int)validIntersections[i].point.x) + ","
+            + std::to_string((int)validIntersections[i].point.y) + ") " +
+            "(" + std::to_string(validIntersections[i].distance_to_robot).substr(0, 4) + "m)";
+
+        addText(window, font, eachintersText, 10, sf::Color::Black, false, legendX + 10, currentY, false);
+        currentY += lineHeight;
+    }
     
-    // Robot
+    //robot
     addDot(window, 7, true, legendX + 5, currentY + 5, sf::Color::Red);
-    addText(window, font, "Robot Position", 10, sf::Color::Black, false, 
+    addText(window, font, "Robot Position (0,0)", 10, sf::Color::Black, false, 
            legendX + 15, currentY, false);
 }
 

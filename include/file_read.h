@@ -4,9 +4,8 @@
 #include <vector>
 #include "constants.h"
 
-// Downloads TOML file from URL and saves it locally
+//downloading TOML file from URL and saves it locally
 bool downloadTomlFile(const std::string& url, const std::string& localPath);
-
 Header readHeader(const std::string& filename);
 Scan readScan(const std::string& filename);
 std::vector<double> readRanges(const std::string& filename);

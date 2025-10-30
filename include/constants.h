@@ -74,5 +74,5 @@ const float gridscale = 100.f;
 
 const sf::Color gray = sf::Color(150, 200, 255, 60);
 const sf::Color darkGray = sf::Color(176, 200, 224);
-
+const sf::Color darkGreen = sf::Color(5, 137, 0);
 #endif

@@ -20,7 +20,7 @@ int addDot (sf::RenderWindow& window, float size, bool dotAlign, float posX, flo
 void drawInRangeDots(sf::RenderWindow& window, sf::Font& font, Point2D& point, int precision, sf::Color color);
 void drawIntersectionMarker(sf::RenderWindow& window, sf::Font& font, const Intersection& intersection, bool showLabel = true);
 void drawDetectedLine(sf::RenderWindow& window, const std::vector<Point2D>& points, const Line& line, sf::Color color);
-void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, int numIntersections);
+void drawLegend(sf::RenderWindow& window, sf::Font& font, int numLines, int numIntersections, std::vector<Line>& detectedLines, std::vector<Point2D>& allDots, std::vector<Intersection>& validIntersections);
 void drawDashedLineBetweenPoints(sf::RenderWindow& window, const Point2D& p1, const Point2D& p2,
                                  sf::Color color, float thickness = 2.0f, float dashLength = 10.0f);
 

@@ -6,12 +6,13 @@
 
 #include "file_read.h"
 
-// Callback function to write received data
+//callback function to write received data
 size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;
 }
 
+//download toml files
 bool downloadTomlFile(const std::string& url, const std::string& localPath) {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -25,6 +26,10 @@ bool downloadTomlFile(const std::string& url, const std::string& localPath) {
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    //bypassing the certificate warnings
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     
     CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);

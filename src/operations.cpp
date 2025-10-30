@@ -13,6 +13,7 @@ double distanceToOrigin(const Point2D& p) {
     return std::sqrt(p.x * p.x + p.y * p.y);
 }
 
+//finds a points distance to a line
 double distancePointToLine(const Point2D& p, const Line& line) {
     /* 
     - Calculate signed distance and take absolute value
@@ -58,7 +59,7 @@ std::vector<Point2D> convertToCarterisan(const std::vector<double>& ranges, cons
     return points;
 }   
 
-
+//creating a line from points
 Line createLineFromPoints(const Point2D& point1, const Point2D& point2) {
     Line line;
     /*
@@ -90,6 +91,7 @@ Line createLineFromPoints(const Point2D& point1, const Point2D& point2) {
     return line;
 }
 
+//find if the lines intersect with each other, if they do find the itercept point
 bool computeLineIntersection (const Line& line1, const Line& line2, Point2D& result) {
     /*
     - a1*x + b1*y + c1 = 0
@@ -114,6 +116,7 @@ bool computeLineIntersection (const Line& line1, const Line& line2, Point2D& res
     return true;
 }
 
+//find the angle between intercepting lines
 double computeAngleBetweenLines(const Line& line1, const Line& line2) {
     /*
     - using the default ax + by + c, slope of this line is m = -a/b 
@@ -159,14 +162,14 @@ std::vector<int> getAvailableIndices(const std::vector<bool>& used) {
 std::vector<int> findInliers(const std::vector<Point2D>& points,
                             const std::vector<int>& availableIndices, 
                             const Line& line,
-                            double threshold) {
+                            double threshold, double maxGap) {
     std::vector<int> inliers;
     for (int idx : availableIndices) {
         if (distancePointToLine(points[idx], line) < threshold) {
             inliers.push_back(idx);
         }
     }
-    double maxGap = 0.5; //max gap for each point is 50cm
+
     std::vector<int> filteredInliers;
 
     for (int idx: inliers) {
@@ -189,6 +192,7 @@ std::vector<int> findInliers(const std::vector<Point2D>& points,
     return filteredInliers;
 }
 
+//ransac algorithm
 Line findBestLineRANSAC(const std::vector<Point2D>& points,
                         const std::vector<int>& availableIndices,
                         std::vector<int>& bestInliers,
@@ -223,7 +227,7 @@ Line findBestLineRANSAC(const std::vector<Point2D>& points,
         
         //finding all points that fit this line (inliers)
         std::vector<int> inliers = findInliers(points, availableIndices, 
-                                               candidateLine, config.distanceThreshold);
+                                               candidateLine, config.distanceThreshold, 0.5);
         
         //keep this line if it has more points previous
         if (inliers.size() > bestInliers.size()) {
@@ -235,6 +239,7 @@ Line findBestLineRANSAC(const std::vector<Point2D>& points,
     return bestLine;
 }
 
+//detect lines
 std::vector<Line> detectLines(const std::vector<Point2D>& points, 
                               const RANSACparameters& config) {
     std::vector<Line> detectedLines;              // Output: all lines found
@@ -318,37 +323,37 @@ bool isOnSegment(const Line& line1, const Line& line2, const std::vector<Point2D
     return false;
 }
 
-
+//look for intersections and find them if there is any
 std::vector<Intersection> findValidIntersections(const std::vector<Line>& lines, 
                         const std::vector<Point2D>& points, double minAngleThreshold) {
     std::vector<Intersection> validIntersections;
 
-    // Check every pair of lines (combinatorial: n choose 2)
+    //checking every pair of lines (combinatorial: n choose 2)
     for (size_t i = 0; i < lines.size(); ++i) {
         for (size_t j = i + 1; j < lines.size(); ++j) {
             Point2D point;
 
-            // Try to find where these two lines intersect
+            //trying to find where these two lines intersect
             if (!computeLineIntersection(lines[i], lines[j], point))
                 continue;  // Lines are parallel - no intersection
                         
             if (!isOnSegment(lines[i], lines[j], points))
                 continue;
 
-            // Calculate the angle between the two lines
+            //calculating the angle between the two lines
             double angle = computeAngleBetweenLines(lines[i], lines[j]);
             
-            // Only keep intersections with sharp enough angles
-            // This filters out near-parallel line intersections
+            //only keep intersections with sharp enough angles
+            //this filters out near-parallel line intersections
             if (angle >= minAngleThreshold || angle <= 90 - minAngleThreshold) {
-                // Create intersection record with all relevant data
+                //creating intersection record with all relevant data
                 Intersection inter;
-                inter.point = point;  // Where lines meet
-                inter.line1_idx = i;  // Index of first line
-                inter.line2_idx = j;  // Index of second line
+                inter.point = point;  //lines meet
+                inter.line1_idx = i;  //index of first line
+                inter.line2_idx = j;  //index of second line
                 if (angle >= minAngleThreshold) inter.angle_degrees = angle;
                 else if (angle <= (90 - minAngleThreshold)) inter.angle_degrees = 90 - angle;
-                inter.distance_to_robot = distanceToOrigin(point); // How far from robot
+                inter.distance_to_robot = distanceToOrigin(point); //how far from robot
                 
                 validIntersections.push_back(inter);
             }

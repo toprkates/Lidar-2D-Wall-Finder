@@ -21,7 +21,7 @@ std::vector<int> getAvailableIndices(const std::vector<bool>& used);
 std::vector<int> findInliers(const std::vector<Point2D>& points,
                             const std::vector<int>& availableIndices, 
                             const Line& line,
-                            double threshold);
+                            double threshold, double maxGap = 0.5);
 
 Line findBestLineRANSAC(const std::vector<Point2D>& points,
                         const std::vector<int>& availableIndices,

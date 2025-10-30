@@ -5,8 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/include",
-                "C:\\Users\\meren\\Documents\\libraries\\SFML-3.0.2\\include",
-                "C:\\msys64\\ucrt64\\include"
+                "C:/C++ Libraries/SFML-3.0.2-windows-gcc-14.2.0-mingw-64-bit/SFML-3.0.2/include",
+                "C:/C++ Libraries/curl-8.16.0_12-win64-mingw/include"
             ],
             "defines": [
                 "_DEBUG",
